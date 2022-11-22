@@ -1,0 +1,9 @@
+# vim stuff
+*~
+Session.vim
+*.swp
+*.o
+totptokutil
+*.leaklog
+draft_notes
+secret.h
