@@ -185,6 +185,36 @@ size_t decode_b32key(uint8_t **k, size_t len)
     return keylen;
 }
 
+size_t padarray(unsigned char *msg, size_t msglen, unsigned char **padmsg, size_t padto)
+{
+	size_t padlen;
+	unsigned char *tmppadmsg;
+
+	if (!padto)
+		return(0);
+
+	padlen = msglen;
+
+	if (msglen % padto)
+		padlen += padto-(msglen % padto);
+
+	if ((tmppadmsg = (unsigned char *) malloc(padlen * sizeof(unsigned char))) == NULL) {
+		fprintf(stderr, "malloc error!\n");
+		exit(EXIT_FAILURE);
+	}
+
+	if (padlen != msglen) {
+		memset(tmppadmsg, 0, padlen * sizeof(unsigned char));
+		memcpy(tmppadmsg, msg, msglen);
+		tmppadmsg[msglen] = 0x80;
+	} else {
+		memcpy(tmppadmsg, msg, msglen);
+	}
+
+	*padmsg = tmppadmsg;
+	return(padlen);
+}
+
 // Compute MAC - ISO/IEC 9797-1 algorithm 1 with padding method 2
 void makemac(unsigned char *msg, size_t msglen, unsigned char *key, unsigned char *mac)
 {
@@ -197,21 +227,9 @@ void makemac(unsigned char *msg, size_t msglen, unsigned char *key, unsigned cha
 
 	sm4_setkey_enc(&ctx, key);
 
-	padlen = msglen;
-
-	if (msglen % 16)
-		padlen += 16-(msglen % 16);
-
-	if (msglen != padlen) {
-		if ((padmessage = (unsigned char *) malloc(padlen * sizeof(unsigned char))) == NULL) {
-			fprintf(stderr, "malloc error!\n");
-			exit(EXIT_FAILURE);
-		}
-		memset(padmessage, 0, padlen * sizeof(unsigned char));
-		memcpy(padmessage, msg, msglen);
-		padmessage[msglen] = 0x80;
-	} else {
-		padmessage = msg;
+	if ((padlen = padarray(msg, 37, &padmessage, 16)) == 0) {
+		fprintf(stderr, "Padding error!\n");
+		return;
 	}
 
 	if ((cpadmessage = (unsigned char *) malloc(padlen * sizeof(unsigned char))) == NULL) {
@@ -221,14 +239,11 @@ void makemac(unsigned char *msg, size_t msglen, unsigned char *key, unsigned cha
 
 	sm4_crypt_cbc(&ctx, SM4_ENCRYPT, padlen, iv, padmessage, cpadmessage);
 
-	if (msglen != padlen)
-		free(padmessage);
-
 	mac[0] = cpadmessage[padlen-16];
 	mac[1] = cpadmessage[padlen-15];
 	mac[2] = cpadmessage[padlen-14];
 	mac[3] = cpadmessage[padlen-13];
 
 	free(cpadmessage);
+	free(padmessage);
 }
-

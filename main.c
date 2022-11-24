@@ -38,7 +38,7 @@ static void sighandler(int sig)
     exit(EXIT_FAILURE);
 }
 
-int cardtransmit(nfc_device *pnd, uint8_t *capdu, size_t capdulen, uint8_t *rapdu, size_t *rapdulen)
+int cardtransmit(nfc_device *pnd, uint8_t *capdu, size_t capdulen, uint8_t *rapdu, size_t *rapdulen, int notimeerr)
 {
     int res;
 	uint16_t status;
@@ -53,7 +53,9 @@ int cardtransmit(nfc_device *pnd, uint8_t *capdu, size_t capdulen, uint8_t *rapd
 	}
 
     if ((res = nfc_initiator_transceive_bytes(pnd, capdu, capdulen, rapdu, *rapdulen, -1)) < 0) {
-        fprintf(stderr, "nfc_initiator_transceive_bytes error! %s\n", nfc_strerror(pnd));
+		if (notimeerr && nfc_device_get_last_error(pnd) == NFC_ETIMEOUT)
+			return(0);
+        fprintf(stderr, "nfc_initiator_transceive_bytes error! %d %s\n", nfc_device_get_last_error(pnd), nfc_strerror(pnd));
         return(-1);
     }
 
@@ -287,7 +289,7 @@ int authtoken(nfc_device *pnd)
 	memcpy(responseapdu+5, response, 16);
 
 	respsz = RAPDUMAXSZ;
-	if(cardtransmit(pnd, responseapdu, 16 + 5, resp, &respsz) < 0) {
+	if(cardtransmit(pnd, responseapdu, 16 + 5, resp, &respsz, 0) < 0) {
 		fprintf(stderr, "Authentication failed!\n");
 		return(-1);
 	}
@@ -295,7 +297,111 @@ int authtoken(nfc_device *pnd)
 	return(0);
 }
 
-int seedtoken(nfc_device *pnd, uint8_t *seed)
+int seedtoken(nfc_device *pnd, uint8_t *seed, size_t seedlen)
+{
+	uint8_t baseapdu[5] = { 0x84, 0xC5, 0x01, 0x00, 0x00 };
+	//                                                ^^ MAC Lc = cipheredseed lenght
+	//                                                   Real Lc = cipheredseed lenght + 4
+	uint8_t *paddedseed;	// padded seed
+	size_t paddedseedlen;
+	uint8_t *cipheredseed;	// crypted padded seed
+	uint8_t *apduseed;		// APDU start + crypted padded seed for MAC calculation (Lc = len(crypted padded seed))
+	uint8_t *apdufinal;		// APDU start + crypted padded seed + MAC (Lc = len(crypted padded seed) + len(MAC))
+	uint8_t mac[4] = { 0 };
+
+	uint8_t resp[RAPDUMAXSZ] = { 0 };
+	size_t respsz;
+
+	sm4_context ctx;
+
+	sm4_setkey_enc(&ctx, customerkey);
+
+	// pad seed
+	if ((paddedseedlen = padarray(seed, seedlen, &paddedseed, 16)) == 0) {
+		fprintf(stderr, "Padding error!\n");
+		return(-1);
+	}
+
+	if(optverb) {
+		printf("Hex seed(%zu):                ", seedlen);
+		print_hex(seed, seedlen);
+		printf("\n");
+		printf("Hex padded seed (%zu):        ", paddedseedlen);
+		print_hex(paddedseed, paddedseedlen);
+		printf("\n");
+	}
+
+	// cipher padded seed
+	if ((cipheredseed = (unsigned char *) malloc(paddedseedlen * sizeof(unsigned char))) == NULL) {
+		fprintf(stderr, "malloc error!\n");
+		exit(EXIT_FAILURE);
+	}
+	// non-CBC ! no IV ! baaaaaad (?)
+	for (int i = 0; i < paddedseedlen/16; i++) {
+		sm4_crypt_ecb(&ctx, SM4_ENCRYPT, 16, paddedseed + (i * 16), cipheredseed + (i * 16));
+	}
+
+	if(optverb) {
+		printf("Hex crypted padded Seed(%zu): ", paddedseedlen);
+		print_hex(cipheredseed, paddedseedlen);
+		printf("\n");
+	}
+
+	free(paddedseed);
+
+	// Compose APDU for MAC
+	if ((apduseed = (unsigned char *) malloc((paddedseedlen + 5) * sizeof(unsigned char))) == NULL) {
+		fprintf(stderr, "malloc error!\n");
+		exit(EXIT_FAILURE);
+	}
+	memcpy(apduseed, baseapdu, 5);
+	memcpy(apduseed + 5, cipheredseed, paddedseedlen);
+	apduseed[4] = paddedseedlen;  // set Lc for MAC
+	apduseed[0] = 0x80;  // set class for MAC (yeah, it's not the real class code)
+
+	// Compute MAC
+	makemac(apduseed, paddedseedlen + 5, customerkey, mac);
+
+	if(optverb) {
+		printf("APDU message for MAC(%zu):    ", paddedseedlen + 5);
+		print_hex(apduseed, paddedseedlen + 5);
+		printf("\n");
+		printf("MAC (%zu):                     ", (size_t)4);
+		print_hex(mac, 4);
+		printf("\n");
+	}
+
+	free(apduseed);
+
+	if ((apdufinal = (unsigned char *) malloc((paddedseedlen + 5 + 4) * sizeof(unsigned char))) == NULL) {
+		fprintf(stderr, "malloc error!\n");
+		exit(EXIT_FAILURE);
+	}
+	memcpy(apdufinal, baseapdu, 5);
+	memcpy(apdufinal + 5, cipheredseed, paddedseedlen);
+	memcpy(apdufinal + 5 + paddedseedlen, mac, 4);
+	apdufinal[4] = paddedseedlen + 4;
+
+	if(optverb) {
+		printf("Final APDU(%zu):              ", 5 + paddedseedlen + 4);
+		print_hex(apdufinal, 5 + paddedseedlen + 4);
+		printf("\n");
+	}
+
+	free(cipheredseed);
+
+	if(cardtransmit(pnd, apdufinal, 5 + paddedseedlen + 4, resp, &respsz, 1) < 0) {
+		fprintf(stderr, "Error setting seed!\n");
+		free(apdufinal);
+		return(-1);
+	}
+
+	free(apdufinal);
+
+	return(0);
+}
+
+int configtoken(nfc_device *pnd, uint8_t *seed)
 {
 	return(0);
 }
@@ -312,7 +418,7 @@ int main(int argc, char **argv)
 	char *endptr;
 	int opt = 0;
 	int optinfo = 0;
-	int optauth = 0; // FIXME test
+	int optauth = 0;
 	int optlistdev = 0;
 	char *optconnstring = NULL;
 
@@ -373,6 +479,9 @@ int main(int argc, char **argv)
 			return(EXIT_FAILURE);
 		}
 
+		if (optverb)
+			printf("base32 input:   %s\n", b32seed);
+
 		// key padding
 		b32lenpadded = b32len;
 		if (b32len % 8)
@@ -403,8 +512,18 @@ int main(int argc, char **argv)
 			return(EXIT_FAILURE);
 		}
 
+		if (optverb)
+			printf("base32 padding: %s\n", b32seed);
+
 		realseed = (uint8_t *)b32seed;
 		realseedlen = decode_b32key(&realseed, b32len);
+
+		// minimum 20 bytes, so pad with 0x00
+		if (realseedlen < 20) {
+			realseed = realloc(realseed, 20);
+			memset(realseed+realseedlen, 0, (20 - realseedlen) * sizeof(uint8_t));
+			realseedlen = 20;
+		}
 
 		if (realseedlen > 63) {
 			fprintf(stderr, "Seed is too long (> 63 bytes)!\n");
@@ -485,8 +604,8 @@ int main(int argc, char **argv)
 	}
 
 	if (realseed) {
-		// authtoken(pnd);
-		// setseed
+		authtoken(pnd);
+		seedtoken(pnd, realseed, realseedlen);
 	}
 
 	if (realseed)
