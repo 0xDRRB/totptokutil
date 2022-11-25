@@ -224,9 +224,6 @@ int gettokeninfo(nfc_device *pnd, tokeninfo *info)
 	// copy serial
 	memcpy(info->serial, resp + 4, info->seriallen);
 
-	// copy model code (?)
-	memcpy(info->model, resp + 4 + info->seriallen, 2);
-
 	// get unix time
 	info->time =
 		resp[4 + info->seriallen + 2]     << 24 |
@@ -244,7 +241,6 @@ void printtokeninfo(tokeninfo *info)
 	struct tm ltm = *localtime(&t);
 
 	printf("Serial number:    %s\n", info->serial);
-	printf("Model number (?): 0x%02x%02x\n", info->model[0], info->model[1]);
     printf("Date/Time:        %d-%02d-%02d %02d:%02d:%02d (local: %d-%02d-%02d %02d:%02d:%02d %c%lds)\n",
 			tm.tm_year+1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec,
 			ltm.tm_year+1900, ltm.tm_mon + 1, ltm.tm_mday, ltm.tm_hour, ltm.tm_min, ltm.tm_sec,
