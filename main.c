@@ -245,8 +245,6 @@ void printtokeninfo(tokeninfo *info)
 			tm.tm_year+1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec,
 			ltm.tm_year+1900, ltm.tm_mon + 1, ltm.tm_mday, ltm.tm_hour, ltm.tm_min, ltm.tm_sec,
 			t > info->time ? '+' : '-', t-info->time);
-
-	return;
 }
 
 int authtoken(nfc_device *pnd)
@@ -264,8 +262,8 @@ int authtoken(nfc_device *pnd)
 		return(-1);
 	}
 
-	if(respsz - 2 > 16) {
-		fprintf(stderr, "Challenge too big (?). Giving up !\n");
+	if(respsz - 2 != 16) {
+		fprintf(stderr, "Bad challenge size (?). Giving up !\n");
 		return(-1);
 	}
 
