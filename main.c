@@ -390,7 +390,7 @@ int seedtoken(nfc_device *pnd, uint8_t *seed, size_t seedlen)
 
 	free(cipheredseed);
 
-	if(cardtransmit(pnd, apdufinal, 5 + paddedseedlen + 4, resp, &respsz, 1) < 0) {
+	if(cardtransmit(pnd, apdufinal, 5 + paddedseedlen + 4, resp, &respsz, 1) < 0) { // FIXME
 		fprintf(stderr, "Error setting seed!\n");
 		free(apdufinal);
 		return(-1);

@@ -227,7 +227,7 @@ void makemac(unsigned char *msg, size_t msglen, unsigned char *key, unsigned cha
 
 	sm4_setkey_enc(&ctx, key);
 
-	if ((padlen = padarray(msg, 37, &padmessage, 16)) == 0) {
+	if ((padlen = padarray(msg, msglen, &padmessage, 16)) == 0) {
 		fprintf(stderr, "Padding error!\n");
 		return;
 	}
