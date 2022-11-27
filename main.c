@@ -412,7 +412,6 @@ int main(int argc, char **argv)
 	char *endptr;
 	int opt = 0;
 	int optinfo = 0;
-	int optauth = 0;
 	int optlistdev = 0;
 	char *optconnstring = NULL;
 
@@ -425,7 +424,7 @@ int main(int argc, char **argv)
 
 	tokeninfo tokinfo = { 0 };
 
-	while((retopt = getopt(argc, argv, "ivhlad:s:")) != -1) {
+	while((retopt = getopt(argc, argv, "ivhld:s:")) != -1) {
 		switch (retopt) {
 			case 'i':
 				optinfo = 1;
@@ -433,10 +432,6 @@ int main(int argc, char **argv)
 				break;
 			case 'l':
 				optlistdev = 1;
-				opt++;
-				break;
-			case 'a':
-				optauth = 1;
 				opt++;
 				break;
 			case 'd':
@@ -585,12 +580,6 @@ int main(int argc, char **argv)
 		if (gettokeninfo(pnd, &tokinfo) == 0) {
 			printf("Token found:\n");
 			printtokeninfo(&tokinfo);
-		}
-	}
-
-	if (optauth) {
-		if (authtoken(pnd) == 0) {
-			printf("Authentication success :)\n");
 		}
 	}
 
