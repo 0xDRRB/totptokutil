@@ -262,7 +262,7 @@ int authtoken(nfc_device *pnd)
 		return(-1);
 	}
 
-	if(respsz - 2 != 16) {
+	if(respsz - 2 > 16) {
 		fprintf(stderr, "Bad challenge size (?). Giving up !\n");
 		return(-1);
 	}
@@ -280,7 +280,7 @@ int authtoken(nfc_device *pnd)
 	responseapdu[4] = 0x10;
 
 	// copy response
-	memcpy(responseapdu+5, response, 16);
+	memcpy(responseapdu + 5, response, 16);
 
 	respsz = RAPDUMAXSZ;
 	if(cardtransmit(pnd, responseapdu, 16 + 5, resp, &respsz, 0) < 0) {
@@ -384,7 +384,7 @@ int seedtoken(nfc_device *pnd, uint8_t *seed, size_t seedlen)
 
 	free(cipheredseed);
 
-	if(cardtransmit(pnd, apdufinal, 5 + paddedseedlen + 4, resp, &respsz, 1) < 0) { // FIXME
+	if(cardtransmit(pnd, apdufinal, 5 + paddedseedlen + 4, resp, &respsz, 1) < 0) {
 		fprintf(stderr, "Error setting seed!\n");
 		free(apdufinal);
 		return(-1);
@@ -486,15 +486,12 @@ int main(int argc, char **argv)
 				fprintf(stderr, "malloc error!\n");
 				return EXIT_FAILURE;
 			}
-			memset(b32seedpadded, 0, (b32lenpadded + 1) * sizeof(char));
-			// fill with '='
-			for (int i=0; i < b32lenpadded; i++) {
-				b32seedpadded[i] = '=';
-			}
+			// padding with '='
+			memset(b32seedpadded, '=', b32lenpadded);
+			// end string
+			b32seedpadded[b32lenpadded] = 0;
 			// copy undersized key
-			for (int i=0; i < b32len; i++) {
-				b32seedpadded[i] = b32seed[i];
-			}
+			memcpy(b32seedpadded, b32seed, b32len);
 			// replace key
 			free(b32seed);
 			b32seed = b32seedpadded;
@@ -515,12 +512,12 @@ int main(int argc, char **argv)
 		// minimum 20 bytes, so pad with 0x00
 		if (realseedlen < 20) {
 			realseed = realloc(realseed, 20);
-			memset(realseed+realseedlen, 0, (20 - realseedlen) * sizeof(uint8_t));
+			memset(realseed + realseedlen, 0, (20 - realseedlen) * sizeof(uint8_t));
 			realseedlen = 20;
 		}
 
 		if (realseedlen > 63) {
-			fprintf(stderr, "Seed is too long (> 63 bytes)!\n");
+			fprintf(stderr, "Seed is too big (> 63 bytes)!\n");
 			return(EXIT_FAILURE);
 		}
 	}

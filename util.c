@@ -1,3 +1,11 @@
+/*
+ * Utility functions
+ *
+ * Base32 verification and decoding come from fmount's "c_otp" project
+ * https://github.com/fmount/c_otp
+ *
+ */
+
 #include <stdio.h>
 #include <ctype.h>
 #include <stdlib.h>
