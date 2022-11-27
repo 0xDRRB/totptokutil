@@ -96,7 +96,12 @@ void printhelp(char *binname)
 	printf("Copyright (c) 2022 - Denis Bodor\n\n");
 	printf("Usage : %s [OPTIONS]\n", binname);
 	printf(" -i              get info on token\n");
-	printf(" -s seed         use this base32 encoded secret key / seed\n");
+	printf(" -k seed         use this base32 encoded secret key / seed\n");
+	printf(" -t unix_time    set date/time in UNIX epoch format or system time if value is \"now\"\n");
+	printf(" -m n            set HMAC method (1=SHA-1, 2=SHA-256)\n");
+	printf(" -s n            set step time (1=30s, 2=60s)\n");
+	printf(" -o n            set display time out (0=15s, 1=30s, 2=60s, 3=120s)\n");
+	printf(" -a              autoconf with default (sync time, SHA-1, 30s step, 30s display timeout)\n");
 	printf(" -l              list available readers\n");
 	printf(" -d connstring   use this device (default: use the first available device)\n");
 	printf(" -v              verbose mode\n");

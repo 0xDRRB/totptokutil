@@ -19,9 +19,18 @@
 #define S_OK              0x9100  // OK (after additional data frame)
 #define S_MORE            0x91af  // Additional data frame is expected to be sent
 
-#define RAPDUMAXSZ 512
-#define CAPDUMAXSZ 512
-#define DEBUG        0
+#define RAPDUMAXSZ           512
+#define CAPDUMAXSZ           512
+#define DEBUG                  0
+
+#define CONF_SHA1           0x01
+#define CONF_SHA256         0x02
+#define CONF_DTIME15        0x00
+#define CONF_DTIME30        0x01
+#define CONF_DTIME60        0x02
+#define CONF_DTIME120       0x03
+#define CONF_STEP30         0x1e
+#define CONF_STEP60         0x3c
 
 nfc_device *pnd;
 nfc_context *context;
@@ -40,9 +49,9 @@ static void sighandler(int sig)
 
 int cardtransmit(nfc_device *pnd, uint8_t *capdu, size_t capdulen, uint8_t *rapdu, size_t *rapdulen, int notimeerr)
 {
-    int res;
+	int res;
 	uint16_t status;
-    size_t  szPos;
+	size_t  szPos;
 
 	if (DEBUG || optverb) {
 		printf(YELLOW "=> ");
@@ -52,12 +61,12 @@ int cardtransmit(nfc_device *pnd, uint8_t *capdu, size_t capdulen, uint8_t *rapd
 		printf(RESET "\n");
 	}
 
-    if ((res = nfc_initiator_transceive_bytes(pnd, capdu, capdulen, rapdu, *rapdulen, -1)) < 0) {
+	if ((res = nfc_initiator_transceive_bytes(pnd, capdu, capdulen, rapdu, *rapdulen, -1)) < 0) {
 		if (notimeerr && nfc_device_get_last_error(pnd) == NFC_ETIMEOUT)
 			return(0);
-        fprintf(stderr, "nfc_initiator_transceive_bytes error! %d %s\n", nfc_device_get_last_error(pnd), nfc_strerror(pnd));
-        return(-1);
-    }
+		fprintf(stderr, "nfc_initiator_transceive_bytes error! %d %s\n", nfc_device_get_last_error(pnd), nfc_strerror(pnd));
+		return(-1);
+	}
 
 	if (DEBUG || optverb) {
 		printf(GREEN "<= ");
@@ -86,8 +95,8 @@ int cardtransmit(nfc_device *pnd, uint8_t *capdu, size_t capdulen, uint8_t *rapd
 // Transmit ADPU from hex string
 int strcardtransmit(nfc_device *pnd, const char *line, uint8_t *rapdu, size_t *rapdulen)
 {
-    int res;
-    size_t szPos;
+	int res;
+	size_t szPos;
 	uint8_t *capdu = NULL;
 	size_t capdulen = 0;
 	*rapdulen = RAPDUMAXSZ;
@@ -395,8 +404,45 @@ int seedtoken(nfc_device *pnd, uint8_t *seed, size_t seedlen)
 	return(0);
 }
 
-int configtoken(nfc_device *pnd, uint8_t *seed)
+int configtoken(nfc_device *pnd, uint8_t *conftime, uint8_t confmac, uint8_t confstep, uint8_t confdisp)
 {
+	uint8_t apdu[5 + 19 + 4] = {
+		0x80, 0xd4, 0x00, 0x00, 0x13,  // Class Cmd p1 p2 Lc
+		0x81, 0x11,                    // TLV_TAG_SYS_CONFG header and length
+		0x1f, 0x01,                    // TLV_TAG_SYSCLOSE_TIMEOUT header and length
+		0x00,                          // [9] display timeout <<
+		0x0f, 0x04,                    // TLV_TAG_UTC_TIME header and length
+		0x00, 0x00, 0x00, 0x00,        // [12-15] time <<
+		0x86, 0x06,                    // TLV_TAG_TOTP_PARAM header and length
+		0x0a, 0x01,                    // TLV_TAG_TOTP_HMAC header and length
+		0x00,                          // [20] hmac <<
+		0x0d, 0x01,                    // TLV_TAG_TOTP_TIME_STEP header and length
+		0x00,                          // [23] step <<
+		0x00, 0x00, 0x00, 0x00         // MAC
+	};
+	uint8_t mac[4];
+	uint8_t resp[RAPDUMAXSZ] = { 0 };
+	size_t respsz;
+
+	// set confuiguration
+	apdu[9] = confdisp;
+	memcpy(apdu+12, conftime, 4);
+	apdu[20] = confmac;
+	apdu[23] = confstep;
+
+	// Compute MAC
+	makemac(apdu, 5 + 19, customerkey, mac);
+	// copye MAC
+	memcpy(apdu+24, mac, 4);
+	// real APDU
+	apdu[0] = 0x84;
+	apdu[4] = 0x17;
+
+	if(cardtransmit(pnd, apdu, 5 + 19 + 4, resp, &respsz, 1) < 0) {
+		fprintf(stderr, "Error setting configuration!\n");
+		return(-1);
+	}
+
 	return(0);
 }
 
@@ -414,6 +460,14 @@ int main(int argc, char **argv)
 	int optinfo = 0;
 	int optlistdev = 0;
 	char *optconnstring = NULL;
+	int optconftime = 0;
+	int optconfmac = 0;
+	int optconfdisp = 0;
+	int optconfstep = 0;
+	int optconfauto = 0;
+	uint8_t confmac, confdisp, confstep;
+	uint8_t conftime[4] = { 0 };
+	uint32_t tmptime = 0;
 
 	char *b32seed = NULL;
 	size_t b32len;
@@ -422,32 +476,122 @@ int main(int argc, char **argv)
 	uint8_t *realseed = NULL;;
 	size_t realseedlen;
 
+	time_t t = 0;
+
 	tokeninfo tokinfo = { 0 };
 
-	while((retopt = getopt(argc, argv, "ivhld:s:")) != -1) {
+	while((retopt = getopt(argc, argv, "ivhld:k:t:m:o:s:a")) != -1) {
 		switch (retopt) {
-			case 'i':
+			case 'i':	// get info
 				optinfo = 1;
 				opt++;
 				break;
-			case 'l':
+			case 'l':	// list NFC readers
 				optlistdev = 1;
 				opt++;
 				break;
-			case 'd':
+			case 'd':	// choose reader
 				optconnstring = strdup(optarg);
-				opt++;
 				break;
-			case 's':
+			case 'k':	// set seed
 				b32seed = strdup(optarg);
 				opt++;
 				break;
-			case 'v':
+			case 't':	// set time
+				if (strcmp(optarg, "now") == 0) {
+					// FIXME : delai auth + reste -> +2s
+					t = time(NULL);
+					conftime[0] = (t & 0xff000000) >> 24;
+					conftime[1] = (t & 0x00ff0000) >> 16;
+					conftime[2] = (t & 0x0000ff00) >> 8;
+					conftime[3] =  t & 0x000000ff;
+				} else {
+					tmptime = (uint32_t)strtol(optarg, &endptr, 10);
+					if (endptr == optarg) {
+						fprintf(stderr, "Error: Invalid epoch date/time\n");
+						return(EXIT_FAILURE);
+					}
+					conftime[0] = (tmptime & 0xff000000) >> 24;
+					conftime[1] = (tmptime & 0x00ff0000) >> 16;
+					conftime[2] = (tmptime & 0x0000ff00) >> 8;
+					conftime[3] =  tmptime & 0x000000ff;
+				}
+				optconftime = 1;
+				opt++;
+				break;
+			case 'm':	// set HMAC
+				if (strlen(optarg) != 1) {
+					fprintf(stderr, "Error: invalid argument for HMAC method!\n");
+					return(EXIT_FAILURE);
+				}
+				switch(optarg[0]) {
+				case '1':
+					confmac = CONF_SHA1;
+					break;
+				case '2':
+					confmac = CONF_SHA256;
+					break;
+				default:
+					fprintf(stderr, "Error: unknown HMAC method! Valid values are 1=SHA-1, 2=SHA-256\n");
+					return(EXIT_FAILURE);
+				}
+				optconfmac = 1;
+				opt++;
+				break;
+			case 'o':	// set display time
+				if (strlen(optarg) != 1) {
+					fprintf(stderr, "Error: invalid argument for display timeout!\n");
+					return(EXIT_FAILURE);
+				}
+				switch(optarg[0]) {
+				case '0':
+					confdisp = CONF_DTIME15;
+					break;
+				case '1':
+					confdisp = CONF_DTIME30;
+					break;
+				case '2':
+					confdisp = CONF_DTIME60;
+					break;
+				case '3':
+					confdisp = CONF_DTIME120;
+					break;
+				default:
+					fprintf(stderr, "Error: unknown display timeout! Valid values are 0=15s, 1=30s, 2=60s, 3=120s\n");
+					return(EXIT_FAILURE);
+				}
+				optconfdisp = 1;
+				opt++;
+				break;
+			case 's':	// set step time
+				if (strlen(optarg) != 1) {
+					fprintf(stderr, "Error: invalid argument for step time!\n");
+					return(EXIT_FAILURE);
+				}
+				switch(optarg[0]) {
+				case '1':
+					confstep = CONF_STEP30;
+					break;
+				case '2':
+					confstep = CONF_STEP60;
+					break;
+				default:
+					fprintf(stderr, "Error: unknown step time! Valid values are 1=30s, 2=60s\n");
+					return(EXIT_FAILURE);
+				}
+				optconfstep = 1;
+				opt++;
+				break;
+			case 'a':	// autoconf with default
+				optconfauto = 1;
+				opt++;
+				break;
+			case 'v':	// verbose mode
 				optverb = 1;
 				break;
-			case 'h':
+			case 'h':	// help
 				printhelp(argv[0]);
-				return(EXIT_FAILURE);
+				return(EXIT_SUCCESS);
 			default:
 				printhelp(argv[0]);
 				return(EXIT_FAILURE);
@@ -457,6 +601,17 @@ int main(int argc, char **argv)
 	if (!opt) {
 		printhelp(argv[0]);
 		return(EXIT_FAILURE);
+	}
+
+	if (optconftime || optconfmac || optconfdisp || optconfstep) {
+		if (optconfauto) {
+			fprintf(stderr, "You cannot autoconfig and define settings at the same time!\n");
+			return(EXIT_FAILURE);
+		}
+		if (!optconftime || !optconfmac || !optconfdisp || !optconfstep) {
+			fprintf(stderr, "You must specify all the settings at once (time + HMAC method + step + display timeout)!\n");
+			return(EXIT_FAILURE);
+		}
 	}
 
 	// base32 input checks
@@ -583,9 +738,22 @@ int main(int argc, char **argv)
 		}
 	}
 
-	if (realseed) {
+	// if we have one conf* here, we have all
+	if (realseed || confdisp || optconfauto) {
 		authtoken(pnd);
-		seedtoken(pnd, realseed, realseedlen);
+		if (confdisp) {
+			configtoken(pnd, conftime, confmac, confstep, confdisp);
+		} else if (optconfauto) {
+			t = time(NULL);
+			conftime[0] = (t & 0xff000000) >> 24;
+			conftime[1] = (t & 0x00ff0000) >> 16;
+			conftime[2] = (t & 0x0000ff00) >> 8;
+			conftime[3] =  t & 0x000000ff;
+			configtoken(pnd, conftime, CONF_SHA1, CONF_STEP30, CONF_DTIME30);
+		}
+		if (realseed) {
+			seedtoken(pnd, realseed, realseedlen);
+		}
 	}
 
 	if (realseed)
