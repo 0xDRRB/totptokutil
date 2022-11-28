@@ -423,16 +423,27 @@ int configtoken(nfc_device *pnd, uint8_t *conftime, uint8_t confmac, uint8_t con
 	uint8_t mac[4];
 	uint8_t resp[RAPDUMAXSZ] = { 0 };
 	size_t respsz;
+	time_t t = 0;
 
 	// set confuiguration
 	apdu[9] = confdisp;
-	memcpy(apdu+12, conftime, 4);
+	if (conftime == NULL) {
+		// we don't get time, so use system time
+		t = time(NULL);
+		apdu[12] = (t & 0xff000000) >> 24;
+		apdu[13] = (t & 0x00ff0000) >> 16;
+		apdu[14] = (t & 0x0000ff00) >> 8;
+		apdu[15] =  t & 0x000000ff;
+	} else {
+		// use provided time
+		memcpy(apdu+12, conftime, 4);
+	}
 	apdu[20] = confmac;
 	apdu[23] = confstep;
 
 	// Compute MAC
 	makemac(apdu, 5 + 19, customerkey, mac);
-	// copye MAC
+	// copy MAC
 	memcpy(apdu+24, mac, 4);
 	// real APDU
 	apdu[0] = 0x84;
@@ -466,7 +477,9 @@ int main(int argc, char **argv)
 	int optconfstep = 0;
 	int optconfauto = 0;
 	uint8_t confmac, confdisp, confstep;
-	uint8_t conftime[4] = { 0 };
+
+	uint8_t tmpctime[4] = { 0 };
+	uint8_t *conftime = NULL;
 	uint32_t tmptime = 0;
 
 	char *b32seed = NULL;
@@ -475,8 +488,6 @@ int main(int argc, char **argv)
 	size_t b32lenpadded;
 	uint8_t *realseed = NULL;;
 	size_t realseedlen;
-
-	time_t t = 0;
 
 	tokeninfo tokinfo = { 0 };
 
@@ -499,22 +510,18 @@ int main(int argc, char **argv)
 				break;
 			case 't':	// set time
 				if (strcmp(optarg, "now") == 0) {
-					// FIXME : delai auth + reste -> +2s
-					t = time(NULL);
-					conftime[0] = (t & 0xff000000) >> 24;
-					conftime[1] = (t & 0x00ff0000) >> 16;
-					conftime[2] = (t & 0x0000ff00) >> 8;
-					conftime[3] =  t & 0x000000ff;
+					conftime = NULL;
 				} else {
 					tmptime = (uint32_t)strtol(optarg, &endptr, 10);
 					if (endptr == optarg) {
 						fprintf(stderr, "Error: Invalid epoch date/time\n");
 						return(EXIT_FAILURE);
 					}
-					conftime[0] = (tmptime & 0xff000000) >> 24;
-					conftime[1] = (tmptime & 0x00ff0000) >> 16;
-					conftime[2] = (tmptime & 0x0000ff00) >> 8;
-					conftime[3] =  tmptime & 0x000000ff;
+					tmpctime[0] = (tmptime & 0xff000000) >> 24;
+					tmpctime[1] = (tmptime & 0x00ff0000) >> 16;
+					tmpctime[2] = (tmptime & 0x0000ff00) >> 8;
+					tmpctime[3] =  tmptime & 0x000000ff;
+					conftime = tmpctime;
 				}
 				optconftime = 1;
 				opt++;
@@ -744,12 +751,7 @@ int main(int argc, char **argv)
 		if (confdisp) {
 			configtoken(pnd, conftime, confmac, confstep, confdisp);
 		} else if (optconfauto) {
-			t = time(NULL);
-			conftime[0] = (t & 0xff000000) >> 24;
-			conftime[1] = (t & 0x00ff0000) >> 16;
-			conftime[2] = (t & 0x0000ff00) >> 8;
-			conftime[3] =  t & 0x000000ff;
-			configtoken(pnd, conftime, CONF_SHA1, CONF_STEP30, CONF_DTIME30);
+			configtoken(pnd, NULL, CONF_SHA1, CONF_STEP30, CONF_DTIME30);
 		}
 		if (realseed) {
 			seedtoken(pnd, realseed, realseedlen);
