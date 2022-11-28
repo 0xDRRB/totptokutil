@@ -250,10 +250,16 @@ void printtokeninfo(tokeninfo *info)
 	struct tm ltm = *localtime(&t);
 
 	printf("Serial number:    %s\n", info->serial);
-    printf("Date/Time:        %d-%02d-%02d %02d:%02d:%02d (local: %d-%02d-%02d %02d:%02d:%02d %c%lds)\n",
+    printf("Date/Time:        %d-%02d-%02d %02d:%02d:%02d (local: %d-%02d-%02d %02d:%02d:%02d",
 			tm.tm_year+1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec,
-			ltm.tm_year+1900, ltm.tm_mon + 1, ltm.tm_mday, ltm.tm_hour, ltm.tm_min, ltm.tm_sec,
-			t > info->time ? '+' : '-', t-info->time);
+			ltm.tm_year+1900, ltm.tm_mon + 1, ltm.tm_mday, ltm.tm_hour, ltm.tm_min, ltm.tm_sec);
+
+	if (t > info->time)
+		printf(" +%lds)\n", t - info->time);
+	else if (t < info->time)
+		printf(" -%lds)\n", info->time - t);
+	else
+		printf(")\n");
 }
 
 int authtoken(nfc_device *pnd)
