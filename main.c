@@ -745,10 +745,10 @@ int main(int argc, char **argv)
 		}
 	}
 
-	// if we have one conf* here, we have all
-	if (realseed || confdisp || optconfauto) {
+	// if we have one optconf* here, we have all conf*
+	if (realseed || optconfdisp || optconfauto) {
 		authtoken(pnd);
-		if (confdisp) {
+		if (optconfdisp) {
 			configtoken(pnd, conftime, confmac, confstep, confdisp);
 		} else if (optconfauto) {
 			configtoken(pnd, NULL, CONF_SHA1, CONF_STEP30, CONF_DTIME30);
