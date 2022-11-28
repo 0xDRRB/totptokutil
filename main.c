@@ -685,6 +685,9 @@ int main(int argc, char **argv)
 		}
 	}
 
+	if ((optconfdisp || optconfauto) && !realseed)
+		printf("Warning ! Some tokens clear the seed when setting the time. You may also need to specify a new seed.\n");
+
     if (signal(SIGINT, &sighandler) == SIG_ERR) {
         printf("Error: Can't catch SIGINT\n");
         return(EXIT_FAILURE);
