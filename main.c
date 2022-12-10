@@ -31,6 +31,8 @@
 #include <time.h>
 #include <signal.h>
 #include <unistd.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include <nfc/nfc.h>
 
 #include "main.h"
@@ -38,7 +40,7 @@
 #include "util.h"
 #include "statusres.h"
 #include "sm4.h"
-#include "secret.h"
+//#include "secret.h"
 
 #define S_SUCCESS         0x9000  // Command completed successfully
 #define S_OK              0x9100  // OK (after additional data frame)
@@ -57,9 +59,13 @@
 #define CONF_STEP30         0x1e
 #define CONF_STEP60         0x3c
 
+#define CUSTKEYFILE			"secret.key"
+
 nfc_device *pnd;
 nfc_context *context;
 int optverb = 0;
+
+unsigned char customerkey[16] = { 0 };
 
 static void sighandler(int sig)
 {
@@ -488,6 +494,41 @@ int configtoken(nfc_device *pnd, uint8_t *conftime, uint8_t confmac, uint8_t con
 	return(0);
 }
 
+int loadcustomerkey()
+{
+	struct stat fstats;
+	FILE *fp;
+
+	if (stat(CUSTKEYFILE, &fstats) == -1 ) {
+		perror("Error getting stats from 'secret.key'");
+		return(-1);
+	}
+
+	if (fstats.st_size != 16) {
+		fprintf(stderr, "Bad file size for 'secret.key' ! Must be 16 bytes.\n");
+		return(-1);
+	}
+
+	if (!(fp = fopen(CUSTKEYFILE, "rb"))) {
+		perror("Error opening 'secret.key' for reading");
+		return(-1);
+	}
+
+	if (fread(customerkey, 16, 1, fp) != 1)
+		perror("Error loading 'secret.key'");
+
+	fclose(fp);
+
+	if (optverb) {
+		printf("Key file loaded.\n");
+		printf("  customerkey is: ");
+		print_hex(customerkey, 16);
+		printf("\n");
+	}
+
+	return(0);
+}
+
 int main(int argc, char **argv)
 {
 	nfc_target nt;
@@ -781,6 +822,7 @@ int main(int argc, char **argv)
 
 	// if we have one optconf* here, we have all conf*
 	if (realseed || optconfdisp || optconfauto) {
+		loadcustomerkey();
 		authtoken(pnd);
 		if (optconfdisp) {
 			configtoken(pnd, conftime, confmac, confstep, confdisp);

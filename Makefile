@@ -20,7 +20,7 @@ clean:
 	rm -rf *.o ${TARGET}
 
 leaktest: ${TARGET}
-	valgrind --log-file=${TARGET}.leaklog --leak-check=yes --show-leak-kinds=definite ./${TARGET} -s INSWG2JAMVZXIIDVNZSSA5TSMFUW2ZLOOQ
+	valgrind --log-file=${TARGET}.leaklog --leak-check=yes --show-leak-kinds=definite ./${TARGET} -k INSWG2JAMVZXIIDVNZSSA5TSMFUW2ZLOOQ
 
 mrproper: clean
 	rm -rf *~
