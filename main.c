@@ -189,6 +189,7 @@ int strcardtransmit(nfc_device *pnd, const char *line, uint8_t *rapdu, size_t *r
 
     if ((res = nfc_initiator_transceive_bytes(pnd, capdu, capdulen, rapdu, *rapdulen, -1)) < 0) {
         fprintf(stderr, "nfc_initiator_transceive_bytes error! %s\n", nfc_strerror(pnd));
+		free(capdu);
 		*rapdulen = 0;
         return(-1);
     }
@@ -206,6 +207,7 @@ int strcardtransmit(nfc_device *pnd, const char *line, uint8_t *rapdu, size_t *r
 	status = (rapdu[res - 2] << 8) | rapdu[res - 1];
 	if (status != S_SUCCESS) {
 		fprintf(stderr, "Bad response ! 0x%04x:%s\n", status, strstatus(status));
+		free(capdu);
 		return(-1);
 	}
 
@@ -494,12 +496,19 @@ int configtoken(nfc_device *pnd, uint8_t *conftime, uint8_t confmac, uint8_t con
 	return(0);
 }
 
-int loadcustomerkey()
+int loadcustomerkey(char *optkeyfile)
 {
 	struct stat fstats;
 	FILE *fp;
+	char defaultkeyfile[] = CUSTKEYFILE;
+	char *keyfile = NULL;
 
-	if (stat(CUSTKEYFILE, &fstats) == -1 ) {
+	if (!optkeyfile)
+		keyfile = defaultkeyfile;
+	else
+		keyfile = optkeyfile;
+
+	if (stat(keyfile, &fstats) == -1 ) {
 		perror("Error getting stats from 'secret.key'");
 		return(-1);
 	}
@@ -509,13 +518,15 @@ int loadcustomerkey()
 		return(-1);
 	}
 
-	if (!(fp = fopen(CUSTKEYFILE, "rb"))) {
+	if (!(fp = fopen(keyfile, "rb"))) {
 		perror("Error opening 'secret.key' for reading");
 		return(-1);
 	}
 
-	if (fread(customerkey, 16, 1, fp) != 1)
+	if (fread(customerkey, 16, 1, fp) != 1) {
 		perror("Error loading 'secret.key'");
+		return(-1);
+	}
 
 	fclose(fp);
 
@@ -525,6 +536,8 @@ int loadcustomerkey()
 		print_hex(customerkey, 16);
 		printf("\n");
 	}
+
+
 
 	return(0);
 }
@@ -543,6 +556,7 @@ int main(int argc, char **argv)
 	int optinfo = 0;
 	int optlistdev = 0;
 	char *optconnstring = NULL;
+	char *optkeyfile = NULL;
 	int optconftime = 0;
 	int optconfmac = 0;
 	int optconfdisp = 0;
@@ -563,11 +577,14 @@ int main(int argc, char **argv)
 
 	tokeninfo tokinfo = { 0 };
 
-	while((retopt = getopt(argc, argv, "ivhld:k:t:m:o:s:a")) != -1) {
+	while((retopt = getopt(argc, argv, "ivhlf:d:k:t:m:o:s:a")) != -1) {
 		switch (retopt) {
 			case 'i':	// get info
 				optinfo = 1;
 				opt++;
+				break;
+			case 'f':
+				optkeyfile = strdup(optarg);
 				break;
 			case 'l':	// list NFC readers
 				optlistdev = 1;
@@ -822,8 +839,22 @@ int main(int argc, char **argv)
 
 	// if we have one optconf* here, we have all conf*
 	if (realseed || optconfdisp || optconfauto) {
-		loadcustomerkey();
-		authtoken(pnd);
+		if (loadcustomerkey(optkeyfile) != 0) {
+			fprintf(stderr, "Unable to load customerkey file! Abord!\n");
+			if (realseed)
+				free(realseed);
+			nfc_close(pnd);
+			nfc_exit(context);
+			exit(EXIT_FAILURE);
+		}
+		if (authtoken(pnd) != 0) {
+			fprintf(stderr, "Authentication failed! Abord!\n");
+			if (realseed)
+				free(realseed);
+			nfc_close(pnd);
+			nfc_exit(context);
+			exit(EXIT_FAILURE);
+		}
 		if (optconfdisp) {
 			configtoken(pnd, conftime, confmac, confstep, confdisp);
 		} else if (optconfauto) {

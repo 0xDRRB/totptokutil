@@ -118,6 +118,7 @@ void printhelp(char *binname)
 	printf("Copyright (c) 2022 - Denis Bodor\n\n");
 	printf("Usage : %s [OPTIONS]\n", binname);
 	printf(" -i              get info on token\n");
+	printf(" -f keyfile      load customerkey from this file (default secret.key)\n");
 	printf(" -k seed         use this base32 encoded secret key / seed\n");
 	printf(" -t unix_time    set date/time in UNIX epoch format or system time if argument is \"now\"\n");
 	printf(" -m n            set HMAC method (1=SHA-1, 2=SHA-256)\n");

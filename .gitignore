@@ -6,3 +6,5 @@ Session.vim
 totptokutil
 *.leaklog
 draft_notes
+excelsecu.key
+token2.key
