@@ -3,7 +3,7 @@ TOTP Token utility
 
 This program allows you to configure TOTP programmable tokens from [Token2](https://www.token2.eu/shop/category/programmable-tokens) over NFC (and probably those from ExcelSecu as well).
 
-This tool is in alpha version and has only been tested with C302-i and OTPC-P2-i tokens ([eSecuOTP-1A from ExcelSecu](https://www.excelsecu.com/productdetail/esecuotptoken26.html) will be tested soon). It allows you to configure the seed (provided in base32 format) used by the token as well as the other settings (HMAC type, date/time, TOTP period and display timeout).
+This tool is in alpha version and has been tested with C302-i and OTPC-P2-i tokens ([eSecuOTP-1A from ExcelSecu](https://www.excelsecu.com/productdetail/esecuotptoken26.html) has also been tested without problems - 2022/12/10). It allows you to configure the seed (provided in base32 format) used by the token as well as the other settings (HMAC type, date/time, TOTP period and display timeout).
 
 The base32 decode code is inspired by *fmount*'s [c_otp](https://github.com/fmount/c_otp) and the SM4 cipher functions are the work of [siddontang](https://github.com/siddontang/pygmcrypto). This program only depends on [LibNFC](https://github.com/nfc-tools/libnfc).
 
